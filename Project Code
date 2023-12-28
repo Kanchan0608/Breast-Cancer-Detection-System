@@ -1,0 +1,132 @@
+# 1.INTRODUCTION.THIS IS OUR FIRST PROJECT ON R. 
+# SO WE TOOK THE DATA FROM WBCD(WISCONSIN BREAST CANCER DATA).
+# 2. DATA IMPORTING & DATA CLEANING
+# 2.1 Import Dataset
+library(readxl)
+wbcd <- read_excel("C:/Users/dell/Downloads/wbcd.xlsx", n_max = 50)
+View(wbcd)
+# 2.2 Remove Null Data
+wbcd$X <- NULL
+# 2.3 Reshape the datasets
+wbcd <- wbcd[,-1]
+wbcd$diagnosis <- factor(ifelse(wbcd$diagnosis=="B","Benign","Malignant"))
+# 2.4 Inspect the Datasets
+str(wbcd)
+summary(wbcd)
+knitr::kable(head(wbcd))
+# 3 ANALYZE THE CORRELATION BETWEEN VARIABLES
+# 3.1 Correlation between each variables
+library(PerformanceAnalytics)
+chart.Correlation(wbcd[,c(2:11)],histogram=TRUE, col="grey10", pch=1, main="Cancer Mean")
+library(psych)
+pairs.panels(wbcd[,c(12:21)], method="pearson",
+             hist.col = "#1fbbfa", density=TRUE, ellipses=TRUE, show.points = TRUE,
+             pch=1, lm=TRUE, cex.cor=1, smoother=F, stars = T, main="Cancer SE")
+library(ggplot2)
+library(GGally)
+ggpairs(wbcd[,c(22:31)],)+ theme_bw()+
+  labs(title="Cancer Worst")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=13))
+ggpairs(wbcd[,c(2:11,1)], aes(color=diagnosis, alpha=0.75), lower=list(continuous="smooth"))+ theme_bw()+
+  labs(title="Cancer Mean")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=12))
+ggpairs(wbcd[,c(12:21,1)], aes(color=diagnosis, alpha=0.75), lower=list(continuous="smooth"))+ theme_bw()+
+  labs(title="Cancer SE")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=12))
+ggcorr(wbcd[,c(2:11)], name = "corr", label = TRUE)+
+  theme(legend.position="none")+
+  labs(title="Cancer Mean")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=12))
+ggcorr(wbcd[,c(12:21)], name = "corr", label = TRUE)+
+  theme(legend.position="none")+
+  labs(title="Cancer SE")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=12))
+library(factoextra)
+all_pca <- transform(wbcd) 
+all_pca <- prcomp(wbcd_pca[,-2], scale = TRUE)
+summary(all_pca)
+fviz_eig(all_pca, addlabels=TRUE, ylim=c(0,60), geom = c("bar", "line"), barfill = "pink", barcolor="grey",linecolor = "red", ncp=10)+
+  labs(title = "Cancer All Variances - PCA",
+       x = "Principal Components", y = "% of variances")
+all_var <- get_pca_var(all_pca)
+all_var
+library("corrplot")
+corrplot(all_var$cos2, is.corr=FALSE)
+corrplot(all_var$contrib, is.corr=FALSE)
+library(gridExtra)
+p1 <- fviz_contrib(all_pca, choice="var", axes=1, fill="pink", color="grey", top=10)
+p2 <- fviz_contrib(all_pca, choice="var", axes=2, fill="skyblue", color="grey", top=10)
+grid.arrange(p1,p2,ncol=2)
+set.seed(218)
+res.all <- kmeans(all_var$coord, centers = 6, nstart = 25)
+grp <- as.factor(res.all$cluster)
+
+fviz_pca_var(all_pca, col.var = grp, 
+             palette = "jco",
+             legend.title = "Cluster")
+ ##uffle the wbcd data(100%) & Make train dataset(70%), test dataset(30%)
+
+nrows <- NROW(wbcd)
+set.seed(218)                           ## fix random value
+index <- sample(1:nrows, 0.7 * nrows)   ## shuffle and divide
+
+#train <- wbcd                          ## 569 test data (100%)
+train <- wbcd[index,]                   ## 398 test data (70%)
+test <- wbcd[-index,]                   ## 171 test data (30%)
+prop.table(table(train$diagnosis))
+prop.table(table(test$diagnosis))
+library(caret)
+predict.kmeans <- function(newdata, object){
+  centers <- object$centers
+  n_centers <- nrow(centers)
+  dist_mat <- as.matrix(dist(rbind(centers, newdata)))
+  dist_mat <- dist_mat[-seq(n_centers), seq(n_centers)]
+  max.col(-dist_mat)
+}
+library(caret)
+learn_kmeans <- kmeans(train[,-1], centers=2)
+
+pre_kmeans <- predict.kmeans(test[,-1],learn_kmeans)
+pre_kmeans <- ifelse(pre_kmeans == 1,"Benign","Malignant")
+pre_kmeans <- factor(pre_kmeans, levels = levels(test$diagnosis))
+cm_kmeans <- confusionMatrix(pre_kmeans, test$diagnosis)
+cm_kmeans
+library(factoextra)
+learn_kmeans$cluster <- ifelse(learn_kmeans$cluster == 1,"Benign","Malignant")
+fviz_cluster(learn_kmeans, data = train[,-1])
+col <- c("#ed3b3b", "#0099ff")
+par(mfrow=c(3,5))
+fourfoldplot(cm_kmeans$table, color = col, conf.level = 0, margin = 1, main=paste("KMeans (",round(cm_kmeans$overall[1]*100),"%)",sep=""))
+opt_predict <- c(cm_kmeans$overall[1])
+names(opt_predict) <- c("knn")
+best_predict_model <- subset(opt_predict, opt_predict==max(opt_predict))
+best_predict_model
+patient <- read_excel("C:/Users/dell/Downloads/wbcd.xlsx", n_max = 50)
+patient$X <- NULL
+M <- patient[19,]               ## 19th patient
+M[,c(1,2)] 
+B <- patient[20,]               ## 20th patient          
+B[,c(1,2)]
+M$diagnosis <- NULL
+B$diagnosis <- NULL
+cancer_diagnosis_predict_p <- function(new, method = learn_kmeans) {
+  new_pre <- predict(method = learn_kmeans, new[,-1])
+  new_res <- as.character(new_pre)
+  return(paste("Patient ID: ",new[,1],"  =>  Result: ", new_res, sep=""))
+}
+
+# for submission output
+cancer_diagnosis_predict_s <- function(new, method = learn_kmeans) {
+  new_pre <- predict(method = learn_kmeans, new[,-1])
+  new_res <- as.character(new_pre)
+  return(new_res)
+}
+cancer_diagnosis_predict_p(B,learn_kmeans)
+t <- patient[-index,]
+orgin <- t$diagnosis
+t$diagnosis <- NULL
+r <- cancer_diagnosis_predict_s(t)
+
+sub <- data.frame(id=t$id, predict_diagnosis=ifelse(r=='Malignant','M','B'), orgin_diagnosis=orgin)
+sub$correct <- ifelse(sub$predict_diagnosis == sub$orgin_diagnosis, "True", "False")
+kable(head(sub,10))
